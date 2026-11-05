@@ -1,0 +1,338 @@
+import argparse
+import os
+import random
+import shutil
+import subprocess
+import sys
+import threading
+import time
+from typing import Optional
+
+from office import control
+from office.config import DATA_DIR, PLUGIN_ID, Config, apply_choices, load_config, load_palette, save_choices
+from office.details import Board, load_details
+from office.input import DoubleClick, Terminal, parse, read_raw
+from office.menu import Menu, MenuItem
+from office.people.crowd import Crowd
+from office.people.person import Person
+from office.people.timing import TICK_SECONDS
+from office.pets import NO_PET, Pet, load_pets, next_pet
+from office.render.bubbles import draw_person_bubble, draw_pet_bubble
+from office.render.canvas import encode
+from office.render.frames import FrameBuilder
+from office.render.png import canvas_png
+from office.render.screen import Screen
+from office.scenes import scene_class, scene_names
+from office.scenes.base import FrameView, Scene
+from office.sources.base import AgentSource, StatusLedger
+from office.sources.fake import FakeSource
+from office.sources.herdr import HerdrClient, HerdrError, HerdrEventSource, PollingSource
+
+SELECTION_SECONDS = 20
+PET_LINE_SECONDS = 3
+FLASH_SECONDS = 5
+MAX_CATCH_UP = 30
+LIVELY_POSES = ("walk", "cheer", "play")
+
+
+class Office:
+    """The running office: the crowd, the scene they are in, and what the viewer has clicked."""
+
+    def __init__(self, config: Config, pets: dict[str, Pet], palette: dict):
+        self.config, self.pets = config, pets
+        self.crowd = Crowd(palette, config.ticket_pattern, config.nap_after_minutes * 60, config.closed)
+        self.scene_name = config.scene if config.scene in scene_names() else "office"
+        self.scene: Optional[Scene] = None
+        self.frames = FrameBuilder()
+        self.confetti = tuple(tuple(c) for c in palette["confetti"])
+        self.pet_kind = config.pet if config.pet in pets or config.pet == NO_PET else next(iter(pets), NO_PET)
+        self.night_mode = config.night
+        self.menu = Menu()
+        self.board = Board(**config.board) if config.board else None
+        self.chatter = random.Random()
+        self.clicks = DoubleClick()
+        self.t = 0
+        self.seen_version = -1
+        self.welcoming = False
+        self.selected: Optional[str] = None
+        self.selected_at = 0.0
+        self.pet_line: Optional[str] = None
+        self.pet_line_at = 0.0
+        self.flash: Optional[str] = None
+        self.flash_at = 0.0
+
+    def fit(self, cols: int, rows: int) -> None:
+        w, h = cols, max(24, (rows - 2) * 2)
+        closed = frozenset(self.crowd.closed)
+        wanted = scene_class(self.scene_name)
+        if self.scene is None or type(self.scene) is not wanted or (self.scene.w, self.scene.h, self.scene.closed) != (w, h, closed):
+            self.scene = wanted(w, h, closed)
+            self.crowd.relocate()
+
+    def sync(self, source: AgentSource) -> None:
+        if source.version == self.seen_version:
+            return
+        self.seen_version = source.version
+        self.crowd.sync(source.agents().values(), self.scene, self.t, newcomers=self.welcoming)
+        self.welcoming = True
+
+    def step(self) -> None:
+        self.crowd.tick(self.scene, self.t, time.time())
+        self.t += 1
+        self.expire(time.time())
+        if self.pet is not None and not self.pet_line and self.t % 330 == 0 and self.chatter.random() < 0.5:
+            self.say_pet_line()
+
+    def expire(self, now: float) -> None:
+        if self.selected and (self.selected not in self.crowd.people or now - self.selected_at > SELECTION_SECONDS):
+            self.selected = None
+        if self.pet_line and now - self.pet_line_at > PET_LINE_SECONDS:
+            self.pet_line = None
+        if self.flash and now - self.flash_at > FLASH_SECONDS:
+            self.flash = None
+
+    @property
+    def pet(self) -> Optional[Pet]:
+        return self.pets.get(self.pet_kind)
+
+    def hour(self) -> int:
+        return int(os.environ.get("OFFICE_HOUR", time.localtime().tm_hour))
+
+    def night(self) -> bool:
+        if self.night_mode in ("on", "off"):
+            return self.night_mode == "on"
+        return self.hour() >= 18 or self.hour() < 7
+
+    def lively(self) -> bool:
+        return self.selected is not None or any(p.pose() in LIVELY_POSES for p in self.crowd.people.values())
+
+    def view(self) -> FrameView:
+        people = list(self.crowd.people.values())
+        return FrameView(people, self.t, self.hour(), self.night(), self.crowd.alarm(), self.pet, self.confetti)
+
+    def canvas(self):
+        canvas = self.frames.build(self.scene, self.view())
+        person = self.crowd.people.get(self.selected) if self.selected else None
+        if person is not None:
+            draw_person_bubble(canvas, person, time.time() - person.since)
+        if self.pet_line and self.pet is not None:
+            x, y, _ = self.scene.pet_spot(self.t)
+            draw_pet_bubble(canvas, x, y, self.pet_line)
+        if self.menu.open:
+            self.menu.draw(canvas, self.menu_items())
+        return canvas
+
+    def menu_items(self) -> list[MenuItem]:
+        amenities = [MenuItem(AMENITY + name, title, "off" if name in self.crowd.closed else "on", switch=True)
+                     for name, title in self.scene.amenities()]
+        settings = [MenuItem("scene", "Scene", self.scene_name), MenuItem("pet", "Pet", self.pet_kind),
+                    MenuItem("night", "Night", self.night_mode)]
+        return settings + amenities
+
+    def choose(self, key: str) -> None:
+        if key.startswith(AMENITY):
+            self.crowd.closed ^= {key[len(AMENITY):]}
+        elif key == "scene":
+            self.scene_name = next_in(scene_names(), self.scene_name)
+        elif key == "pet":
+            self.pet_kind, self.pet_line = next_pet(self.pet_kind, list(self.pets)), None
+        elif key == "night":
+            self.night_mode = next_in(NIGHT_MODES, self.night_mode)
+        self.remember()
+
+    def remember(self) -> None:
+        save_choices(self.config.state_dir, {"closed": sorted(self.crowd.closed), "pet": self.pet_kind,
+                                             "night": self.night_mode, "scene": self.scene_name})
+
+    def press(self, key: str) -> None:
+        if self.menu.open:
+            choice = self.menu.press(key, self.menu_items())
+            if choice:
+                self.choose(choice)
+        elif key == "m":
+            self.menu.toggle()
+        elif key in KEYS:
+            self.command(KEYS[key])
+
+    def frame(self) -> tuple[str, list]:
+        return self.header(), self.canvas().cells()
+
+    def text(self) -> str:
+        header, rows = self.frame()
+        return "\n".join([header] + [encode(row) for row in rows])
+
+    def header(self) -> str:
+        n = self.crowd.counts()
+        red = "\033[1;31m" if n["blocked"] else "\033[2m"
+        line = ("\033[1m%s\033[0m  \033[2m%s\033[0m   %s%d need you\033[0m  \033[33m%d working\033[0m  "
+                "\033[32m%d done\033[0m  \033[2m%d idle\033[0m") % (
+            self.scene.title, time.strftime("%H:%M"), red, n["blocked"], n["working"], n["done"], n["idle"])
+        return line + "   \033[2m%s\033[0m" % (self.flash or "m menu")
+
+    def click(self, col: int, row: int) -> None:
+        if self.menu.open:
+            choice = self.menu.click(col, row - 1, self.menu_items())
+            if choice:
+                self.choose(choice)
+            return
+        px, py = col, (row - 1) * 2
+        if self.pet_hit(px, py):
+            self.say_pet_line()
+            return
+        hit = self.scene.person_at(px, py, list(self.crowd.people.values()))
+        if self.clicks.press(hit.key if hit else None, time.time()):
+            jump_to(hit)
+            self.selected = None
+            return
+        self.selected = None if hit is None or hit.key == self.selected else hit.key
+        self.selected_at = time.time()
+        if hit is not None and self.selected:
+            hit.details = None
+            threading.Thread(target=load_details, args=(hit, self.board), daemon=True).start()
+
+    def pet_hit(self, px: int, py: int) -> bool:
+        if self.pet is None:
+            return False
+        x, y, _ = self.scene.pet_spot(self.t)
+        return abs(px - (x + 3)) <= 5 and y - 8 <= py <= y + 2
+
+    def say_pet_line(self) -> None:
+        self.pet_line, self.pet_line_at = self.chatter.choice(self.pet.lines), time.time()
+
+    def command(self, name: str) -> None:
+        if name == "cycle-pet":
+            self.choose("pet")
+        elif name == "toggle-night":
+            self.night_mode = "off" if self.night() else "on"
+            self.remember()
+        elif name == "snapshot":
+            self.flash, self.flash_at = "snapshot: " + self.snapshot(), time.time()
+
+    def snapshot(self, path: Optional[str] = None) -> str:
+        path = path or os.path.join(self.config.state_dir, "snapshot-%s-%d.png" % (time.strftime("%Y%m%d-%H%M%S"), os.getpid()))
+        with open(path, "wb") as f:
+            f.write(canvas_png(self.canvas()))
+        return path
+
+
+KEYS = {"p": "cycle-pet", "n": "toggle-night", "s": "snapshot"}
+AMENITY = "amenity:"
+NIGHT_MODES = ["auto", "on", "off"]
+
+
+def next_in(options: list[str], current: str) -> str:
+    return options[(options.index(current) + 1) % len(options)] if current in options else options[0]
+
+
+def jump_to(person: Person) -> None:
+    subprocess.Popen(["herdr", "agent", "focus", person.pane_id], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def make_source(config: Config, demo: bool) -> AgentSource:
+    if demo:
+        source = FakeSource()
+        source.start()
+        return source
+    workspace, tab = os.environ.get("HERDR_WORKSPACE_ID"), os.environ.get("HERDR_TAB_ID")
+    ledger = StatusLedger(path=os.path.join(config.state_dir, "since.json"))
+    if config.source == "events":
+        source = HerdrEventSource(HerdrClient(), workspace, tab, ledger)
+        try:
+            source.start()
+            return source
+        except (OSError, HerdrError, ValueError):
+            source.close()
+    source = PollingSource(workspace, tab, ledger)
+    source.start()
+    return source
+
+
+def animate(office: Office, source: AgentSource, inbox: control.Inbox) -> None:
+    screen = Screen(sys.stdout)
+    screen.enter()
+    started = time.monotonic()
+    try:
+        with Terminal() as terminal:
+            while True:
+                office.fit(*shutil.get_terminal_size((100, 30)))
+                office.sync(source)
+                for name in inbox.take():
+                    office.command(name)
+                if not source.visible():
+                    screen.forget()
+                    source.changed.wait(1.0)
+                    source.changed.clear()
+                    started = time.monotonic() - office.t * TICK_SECONDS
+                    continue
+                due = int((time.monotonic() - started) / TICK_SECONDS) - office.t
+                if due > MAX_CATCH_UP:
+                    started += (due - MAX_CATCH_UP) * TICK_SECONDS
+                    due = MAX_CATCH_UP
+                for _ in range(due):
+                    office.step()
+                screen.show(*office.frame())
+                interval = 1 / (office.config.active_fps if office.lively() else office.config.still_fps)
+                if terminal.interactive():
+                    handle_input(office, read_raw(interval))
+                else:
+                    time.sleep(interval)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        screen.leave()
+        source.close()
+
+
+def handle_input(office: Office, raw: str) -> None:
+    clicks, keys = parse(raw)
+    for key in keys:
+        office.press(key)
+    for col, row in clicks:
+        office.click(col, row)
+
+
+def settle(office: Office, source: AgentSource, ticks: int) -> None:
+    office.fit(*shutil.get_terminal_size((100, 30)))
+    office.sync(source)
+    for _ in range(ticks):
+        office.step()
+
+
+def open_tab() -> None:
+    args = ["herdr", "plugin", "pane", "open", "--plugin", PLUGIN_ID, "--entrypoint", "office", "--placement", "tab", "--focus"]
+    if os.environ.get("HERDR_WORKSPACE_ID"):
+        args += ["--workspace", os.environ["HERDR_WORKSPACE_ID"]]
+    subprocess.run(args, check=False)
+
+
+def main(argv: Optional[list[str]] = None) -> None:
+    parser = argparse.ArgumentParser(prog="office", description="A pixel-art office for your herdr agents.")
+    parser.add_argument("command", nargs="?", default="run", choices=["run", "open", *control.COMMANDS])
+    parser.add_argument("--once", action="store_true", help="draw one frame and exit")
+    parser.add_argument("--demo", action="store_true", help="play a scripted day instead of reading herdr")
+    parser.add_argument("--pet", help="cat, dog, chicken, duck, none, or one you added")
+    parser.add_argument("--png", help="with --once, also write the frame to this PNG")
+    parser.add_argument("--settle", type=int, default=150, help="with --once, ticks to run before drawing")
+    args = parser.parse_args(argv)
+    config = load_config()
+    if args.command == "open":
+        open_tab()
+        return
+    if args.command == "snapshot":
+        print("\n".join(control.request_snapshot(config.state_dir)) or "no office is running")
+        return
+    if args.command in control.COMMANDS:
+        control.send(config.state_dir, args.command)
+        return
+    apply_choices(config)
+    config.pet = args.pet or os.environ.get("OFFICE_PET") or config.pet
+    office = Office(config, load_pets(DATA_DIR, config.config_dir), load_palette(config))
+    source = make_source(config, args.demo)
+    if args.once:
+        settle(office, source, args.settle)
+        print(office.text())
+        if args.png:
+            print(office.snapshot(args.png))
+        source.close()
+        return
+    animate(office, source, control.Inbox(config.state_dir))

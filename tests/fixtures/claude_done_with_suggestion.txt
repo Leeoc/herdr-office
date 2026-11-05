@@ -1,0 +1,13 @@
+❯ write the release notes for v0.12.0
+
+⏺ Write(docs/releases/v0.12.0.md)
+  ⎿  Wrote 48 lines to docs/releases/v0.12.0.md
+
+⏺ The release notes are in docs/releases/v0.12.0.md. Want me to post them?
+
+✻ Brewed for 1m 12s
+
+────────────────────────────────────────────────────────────────────────
+❯ yes, post them to the release channel
+────────────────────────────────────────────────────────────────────────
+  ? for shortcuts

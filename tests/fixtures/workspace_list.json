@@ -1,0 +1,28 @@
+{
+ "id": "workspace.list",
+ "result": {
+  "type": "workspace_list",
+  "workspaces": [
+   {
+    "workspace_id": "wQ",
+    "number": 1,
+    "label": "space-0",
+    "focused": false,
+    "pane_count": 7,
+    "tab_count": 4,
+    "active_tab_id": "wQ:t1",
+    "agent_status": "done"
+   },
+   {
+    "workspace_id": "w2H",
+    "number": 4,
+    "label": "space-1",
+    "focused": false,
+    "pane_count": 5,
+    "tab_count": 3,
+    "active_tab_id": "w2H:t1",
+    "agent_status": "idle"
+   }
+  ]
+ }
+}

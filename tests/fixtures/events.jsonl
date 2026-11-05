@@ -1,0 +1,5 @@
+{"id":"sub","result":{"type":"subscription_started"}}
+{"event":"pane.agent_status_changed","data":{"type":"pane_agent_status_changed","pane_id":"wQ:p2","workspace_id":"wQ","agent_status":"working","agent":"claude","display_agent":"Claude","state_labels":{},"title":"✳ Fixing the tests"}}
+{"event":"pane_agent_status_changed","data":{"type":"pane_agent_status_changed","pane_id":"wQ:p2","workspace_id":"wQ","agent_status":"blocked","agent":"claude"}}
+{"event":"tab_focused","data":{"type":"tab_focused","tab_id":"wQ:t1","workspace_id":"wQ"}}
+{"event":"pane_agent_detected","data":{"type":"pane_agent_detected","pane_id":"w2H:p4","workspace_id":"w2H","agent":"claude","released":false}}

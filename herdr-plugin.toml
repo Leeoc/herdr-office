@@ -1,0 +1,36 @@
+id = "lee.herdr-office"
+name = "herdr-office"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "A pixel-art office where your agents type at desks, put a hand up when they need you, cheer when they finish and nap when idle."
+platforms = ["macos", "linux"]
+
+[[panes]]
+id = "office"
+title = "office"
+placement = "tab"
+command = ["bin/office"]
+
+[[actions]]
+id = "open"
+title = "office: open"
+contexts = ["pane", "workspace"]
+command = ["bin/office", "open"]
+
+[[actions]]
+id = "cycle-pet"
+title = "office: next pet"
+contexts = ["pane", "workspace"]
+command = ["bin/office", "cycle-pet"]
+
+[[actions]]
+id = "toggle-night"
+title = "office: toggle night"
+contexts = ["pane", "workspace"]
+command = ["bin/office", "toggle-night"]
+
+[[actions]]
+id = "snapshot"
+title = "office: snapshot to PNG"
+contexts = ["pane", "workspace"]
+command = ["bin/office", "snapshot"]

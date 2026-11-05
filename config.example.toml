@@ -1,0 +1,19 @@
+# Copy to the plugin's config dir as config.toml:
+#   cp config.example.toml "$(herdr plugin config-dir lee.herdr-office)/config.toml"
+# Every key is optional. Choices made in the office's menu (m) are saved separately and win over scene, pet, night and closed.
+
+pet = "cat"                 # cat, dog, chicken, duck, none, or a pet you added
+scene = "office"            # office, station, or a module you add to office/scenes
+night = "auto"              # auto (18:00 to 07:00), on or off
+source = "events"           # events (herdr socket) or poll (herdr CLI every 2s)
+nap_after_minutes = 30      # idle this long and they nap on the couch
+closed = []                 # switched off: coffee, arcade, cooler, lunch, books, plant, pingpong, foosball, naps
+ticket_pattern = '(?i)\b([a-z]{2,}-\d+)'   # agents whose labels share a match hold stand-ups
+active_fps = 10             # while anyone walks, cheers or plays
+still_fps = 3               # otherwise
+
+# Optional: show a card's column and next step from a `board` CLI in the click bubble.
+# [board]
+# command = "~/.local/bin/board"
+# board = "main"
+# project = "~/src/my-project"

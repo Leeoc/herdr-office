@@ -1,0 +1,76 @@
+{
+ "id": "agent.list",
+ "result": {
+  "type": "agent_list",
+  "agents": [
+   {
+    "terminal_id": "term_0000",
+    "agent": "claude",
+    "terminal_title": "Some task",
+    "terminal_title_stripped": "Some task",
+    "agent_status": "done",
+    "agent_session": {
+     "source": "herdr:claude",
+     "agent": "claude",
+     "kind": "id",
+     "value": "00000000-0000-0000-0000-000000000000"
+    },
+    "workspace_id": "wQ",
+    "tab_id": "wQ:t1",
+    "pane_id": "wQ:p1",
+    "focused": false,
+    "state_change_seq": 10,
+    "completion_seq": 10,
+    "cwd": "/home/user/project",
+    "foreground_cwd": "/home/user/project",
+    "revision": 2
+   },
+   {
+    "terminal_id": "term_0001",
+    "agent": "claude",
+    "terminal_title": "Some task",
+    "terminal_title_stripped": "Some task",
+    "agent_status": "idle",
+    "agent_session": {
+     "source": "herdr:claude",
+     "agent": "claude",
+     "kind": "id",
+     "value": "00000000-0000-0000-0000-000000000000"
+    },
+    "workspace_id": "wQ",
+    "tab_id": "wQ:t1",
+    "pane_id": "wQ:p2",
+    "focused": false,
+    "state_change_seq": 11,
+    "completion_seq": 11,
+    "cwd": "/home/user/project",
+    "foreground_cwd": "/home/user/project",
+    "revision": 2
+   },
+   {
+    "terminal_id": "term_0002",
+    "name": "reviewer",
+    "agent": "claude",
+    "terminal_title": "Some task",
+    "terminal_title_stripped": "Some task",
+    "agent_status": "idle",
+    "agent_session": {
+     "source": "herdr:claude",
+     "agent": "claude",
+     "kind": "id",
+     "value": "00000000-0000-0000-0000-000000000000"
+    },
+    "workspace_id": "w2H",
+    "tab_id": "w2H:t1",
+    "pane_id": "w2H:p1",
+    "focused": false,
+    "interactive_ready": true,
+    "state_change_seq": 12,
+    "completion_seq": 12,
+    "cwd": "/home/user/project",
+    "foreground_cwd": "/home/user/project",
+    "revision": 2
+   }
+  ]
+ }
+}
