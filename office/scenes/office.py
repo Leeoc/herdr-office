@@ -44,7 +44,7 @@ class OfficeScene(Scene):
     def __init__(self, w: int, h: int, closed: frozenset[str] = frozenset()):
         self.closed = closed
         self.wall_h = max(10, int(h * 0.26) // 2 * 2)
-        self.lounge_w = max(30, min(56, w // 3))
+        self.lounge_w = 56 if w >= 110 else max(30, w // 3)
         self.lounge_x = w - self.lounge_w
         self.door_x = 3
         cols = max(1, (self.lounge_x - 6) // self.SLOT_W)
@@ -61,12 +61,44 @@ class OfficeScene(Scene):
         self.fridge_x = self.lounge_x + 11
         self.oven_x = self.lounge_x + 20
         self.foosball = (self.lounge_x + self.lounge_w // 2 - 8, self.table[1] + 22)
-        self.places = self.lay_out_activities()
-        self.lay_out_games()
+        self.no_room = self.crowded_out(w, h)
+        self.places = tuple(a for a in self.lay_out_activities() if a.name not in self.no_room)
+        self.game_list = tuple(g for g in self.lay_out_games() if g.name not in self.no_room)
         super().__init__(w, h, closed)
 
     def has(self, amenity: str) -> bool:
-        return amenity not in self.closed
+        return amenity not in self.closed and amenity not in self.no_room
+
+    def crowded_out(self, w: int, h: int) -> set[str]:
+        """Amenities left out because they would overlap something already placed, most expendable last in line."""
+        placed = [Rect(self.lounge_x + 4, 2, 7, 5), Rect(self.board_x, 2, 14, self.wall_h)]
+        crowded = set()
+        for name, rects in self.footprints():
+            inside = all(r.x >= 0 and r.y >= 0 and r.x + r.w <= w and r.y + r.h <= h for r in rects)
+            if inside and not any(r.overlaps(other) for r in rects for other in placed):
+                placed += rects
+            else:
+                crowded.add(name)
+        return crowded
+
+    def footprints(self) -> list[tuple[str, list[Rect]]]:
+        """Each amenity's furniture plus the room its users stand in, in the order they get space."""
+        sx, sy = self.couch
+        ax, ay = self.arcade
+        mx, my = self.coffee
+        tx, ty = self.table
+        fx, fy = self.foosball
+        return [
+            ("naps", [Rect(sx - 2, sy - 3, 28, 9)]),
+            ("arcade", [Rect(ax, ay, 9, 16)]),
+            ("cooler", [Rect(self.cooler[0] - 1, self.cooler[1], 7, 22)]),
+            ("coffee", [Rect(mx - 2, my, 10, 18)]),
+            ("plant", [Rect(self.plant[0] - 1, self.plant[1] + 4, 13, 7)]),
+            ("pingpong", [Rect(tx - 7, ty - 4, 34, 13)]),
+            ("lunch", [Rect(self.fridge_x, self.wall_h - 14, self.oven_x + 12 - self.fridge_x, 18)]),
+            ("books", [Rect(self.shelf_x, 2, 12, self.wall_h), Rect(0, 0, self.door_x + 8, self.wall_h)]),
+            ("foosball", [Rect(fx - 6, fy - 6, 29, 17)]),
+        ]
 
     def lay_out_activities(self) -> tuple[Activity, ...]:
         floor_y = float(self.wall_h + 1)
@@ -81,10 +113,10 @@ class OfficeScene(Scene):
                      pose="water"),
         )
 
-    def lay_out_games(self) -> None:
+    def lay_out_games(self) -> tuple[Game, ...]:
         tx, ty = self.table
         fx, fy = self.foosball
-        self.game_list = (
+        return (
             Game("pingpong", self.TITLES["pingpong"], ((float(tx - 7), float(ty - 4)), (float(tx + 22), float(ty - 4))), (1, -1), 108, 58),
             Game("foosball", self.TITLES["foosball"], ((float(fx - 6), float(fy - 6)), (float(fx - 6), float(fy)),
                                           (float(fx + 17), float(fy - 6)), (float(fx + 17), float(fy))), (1, 1, -1, -1), 150, 60),
@@ -205,7 +237,7 @@ class OfficeScene(Scene):
         c.dot(self.door_x + 5, self.wall_h // 2, (230, 200, 90))
 
     def window_xs(self) -> range:
-        return range(16, max(17, self.board_x - 37), 34)
+        return range(16, self.board_x - 37 if self.has("books") else self.board_x - 19, 34)
 
     def paint_windows(self, c: Canvas, sky: Colour) -> None:
         for wx in self.window_xs():

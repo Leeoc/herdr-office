@@ -1,6 +1,6 @@
 from typing import Optional, TextIO
 
-from office.render.canvas import Cell, encode
+from office.render.canvas import TRUECOLOR, Cell, encode
 
 ENTER = "\033[?1049h\033[?25l\033[?7l"
 LEAVE = "\033[0m\033[?7h\033[?25h\033[?1049l"
@@ -10,8 +10,8 @@ CLEAR_LINE = "\033[K"
 class Screen:
     """Writes frames to the terminal: a header line, then the picture, sending only the cells that changed."""
 
-    def __init__(self, out: TextIO):
-        self.out = out
+    def __init__(self, out: TextIO, colours: str = TRUECOLOR):
+        self.out, self.colours = out, colours
         self.header: Optional[str] = None
         self.rows: Optional[list[list[Cell]]] = None
 
@@ -37,12 +37,12 @@ class Screen:
 
     def changes(self, header: str, rows: list[list[Cell]]) -> str:
         if self.rows is None or len(self.rows) != len(rows) or len(self.rows[0]) != len(rows[0]):
-            return "\033[H\033[2J" + header + CLEAR_LINE + "".join("\n" + encode(row) for row in rows)
+            return "\033[H\033[2J" + header + CLEAR_LINE + "".join("\n" + encode(row, self.colours) for row in rows)
         parts = ["\033[1;1H" + header + CLEAR_LINE] if header != self.header else []
         for index, (row, old) in enumerate(zip(rows, self.rows)):
             if row != old:
                 first, last = changed_span(row, old)
-                parts.append("\033[%d;%dH%s" % (index + 2, first + 1, encode(row[first:last + 1])))
+                parts.append("\033[%d;%dH%s" % (index + 2, first + 1, encode(row[first:last + 1], self.colours)))
         return "".join(parts)
 
 

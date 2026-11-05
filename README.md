@@ -2,7 +2,7 @@
 
 A pixel-art office for your [herdr](https://herdr.dev) agents, drawn in the terminal with half-block characters.
 
-![The office by day](screenshots/office-day.png)
+![A day in the office: people at work, a click to see what one is doing, the menu, then a switch to the station](screenshots/demo.gif)
 
 Every agent herdr knows about is a person in the office:
 
@@ -27,6 +27,7 @@ Two scenes come with it: the **office**, and the **station**, the same floor pla
 ![Menu](screenshots/menu.png)
 ![Lunch, books and the plant](screenshots/activities.png)
 ![Click bubble](screenshots/click-bubble.png)
+![The office by day](screenshots/office-day.png)
 ![Night](screenshots/office-night.png)
 
 ## Install
@@ -45,7 +46,7 @@ From GitHub:
 herdr plugin install Leeoc/herdr-office
 ```
 
-Then run **office: open** from the command palette, which opens the office in a new tab of the current workspace.
+Then run **office: open** from the command palette. It opens the office in a tab named "office" in the current workspace, or takes you to it if it is already open.
 
 ## Controls
 
@@ -76,11 +77,14 @@ Put a `config.toml` in the plugin's config dir (`herdr plugin config-dir lee.her
 | `ticket_pattern` | `(?i)\b([a-z]{2,}-\d+)` | labels with the same match hold stand-ups |
 | `active_fps` | `10` | frame rate while anyone walks, cheers or plays |
 | `still_fps` | `3` | frame rate otherwise |
+| `colours` | `"auto"` | `truecolor` or `256`; `auto` uses truecolor when the terminal sets `COLORTERM` to say it has it |
 | `[board]` | unset | `command`, `board` and `project` for an optional `board` CLI line in the click bubble |
 
 What you pick in the menu is saved in the plugin's state dir (`choices.json`) and wins over `scene`, `pet`, `night` and `closed` here; delete that file to go back to the config. `--pet` and `OFFICE_PET` win over both.
 
-The office draws nothing while its tab is not showing. Snapshots and the record of how long each agent has been in its state live in the plugin's state dir.
+The office draws nothing while its tab is not showing. It needs a pane of at least 80 by 24; smaller panes show a note instead. In smaller panes the lounge leaves out what doesn't fit (foosball goes first, then the kitchen and the games) rather than piling furniture up.
+
+herdr doesn't say how long an agent has been in its state, so the office keeps its own record from the moment it first sees each agent. Straight after installing, nobody naps until they have been idle for `nap_after_minutes` while the office was watching. Snapshots and the record of how long each agent has been in its state live in the plugin's state dir.
 
 ## Run it by hand
 
@@ -90,6 +94,7 @@ bin/office --demo       # a scripted day, no herdr needed
 bin/office --once       # print one frame and exit
 bin/office --once --demo --png office.png
 python3 -m unittest     # the tests
+python3 tools/demo_gif.py   # re-render screenshots/demo.gif from the demo day
 ```
 
 `OFFICE_HOUR=21` pretends it is 21:00.
@@ -141,6 +146,7 @@ office/details.py     what a Claude pane says it is doing, for the click bubble
 office/menu.py        the settings panel
 office/pathing.py     walking routes round furniture
 data/                 pets and people's colours
+tools/demo_gif.py     renders the README's GIF (with a small built-in GIF encoder)
 ```
 
 ## Licence

@@ -42,7 +42,8 @@ def recorded_events():
 class ParseEventTest(unittest.TestCase):
     def test_kinds_come_out_dotted_in_either_form(self):
         kinds = [kind for kind, _ in recorded_events()]
-        self.assertEqual(kinds, ["pane.agent_status_changed", "pane.agent_status_changed", "tab.focused", "pane.agent_detected"])
+        self.assertEqual(kinds, ["pane.agent_status_changed", "pane.agent_status_changed", "tab.focused",
+                                 "pane.agent_detected", "pane.agent_detected"])
 
     def test_data_is_passed_through(self):
         _, data = recorded_events()[0]
@@ -84,6 +85,9 @@ class EventSourceTest(unittest.TestCase):
 
     def test_new_agent_asks_for_a_new_subscription(self):
         self.assertFalse(self.source.apply(*recorded_events()[3]))
+
+    def test_released_agent_asks_for_a_new_subscription(self):
+        self.assertFalse(self.source.apply(*recorded_events()[4]))
 
     def test_subscriptions_cover_every_known_pane(self):
         panes = {s.get("pane_id") for s in self.source.subscriptions() if s["type"] == "pane.agent_status_changed"}

@@ -21,6 +21,7 @@ class Config:
     ticket_pattern: str = r"(?i)\b([a-z]{2,}-\d+)"
     active_fps: float = 10
     still_fps: float = 3
+    colours: str = "auto"
     board: Optional[dict] = None
     closed: list = field(default_factory=list)
     config_dir: str = field(default="", compare=False)
@@ -62,6 +63,13 @@ def plugin_state_dir() -> str:
         os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")), "herdr-office")
     os.makedirs(state, exist_ok=True)
     return state
+
+
+def colour_mode(config: Config) -> str:
+    """truecolor when asked for or when the terminal says it has it, else the 256-colour palette."""
+    if config.colours in ("truecolor", "256"):
+        return config.colours
+    return "truecolor" if os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit") else "256"
 
 
 def choices_path(state_dir: str) -> str:

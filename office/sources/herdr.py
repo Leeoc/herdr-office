@@ -228,8 +228,13 @@ class PollingSource(AgentSource):
         self.publish(snapshots_from(agents, labels, self.ledger), office_visible(workspaces, self.workspace_id, self.tab_id))
 
     def cli(self, *args: str) -> dict:
-        try:
-            out = subprocess.run([self.herdr, *args], capture_output=True, text=True, timeout=5).stdout
-            return json.loads(out or "{}").get("result", {})
-        except (OSError, ValueError, subprocess.SubprocessError):
-            return {}
+        return herdr_cli(*args, herdr=self.herdr)
+
+
+def herdr_cli(*args: str, herdr: str = "herdr") -> dict:
+    """The result of a herdr CLI command, or {} if it failed."""
+    try:
+        out = subprocess.run([herdr, *args], capture_output=True, text=True, timeout=5).stdout
+        return json.loads(out or "{}").get("result", {})
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {}

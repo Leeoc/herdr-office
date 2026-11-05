@@ -48,6 +48,18 @@ class OfficeSceneTest(unittest.TestCase):
         names = [name for name, _ in scene_class("office")(200, 112).amenities()]
         self.assertEqual(names, ["coffee", "arcade", "cooler", "lunch", "books", "plant", "pingpong", "foosball", "naps"])
 
+    def test_smaller_rooms_leave_out_what_does_not_fit_and_nothing_overlaps(self):
+        from office.pathing import Rect
+        for w, h in [(200, 112), (160, 76), (120, 60), (100, 56), (80, 44)]:
+            scene = scene_class("office")(w, h)
+            kept = [rect for name, rects in scene.footprints() if name not in scene.no_room for rect in rects]
+            kept.append(Rect(scene.lounge_x + 4, 2, 7, 5))
+            for i, a in enumerate(kept):
+                for b in kept[i + 1:]:
+                    self.assertFalse(a.overlaps(b), (w, h, a, b))
+            self.assertFalse({a.name for a in scene.activities()} & scene.no_room)
+        self.assertIn("foosball", scene_class("office")(120, 60).no_room)
+
     def test_switched_off_furniture_leaves_the_room(self):
         office = scene_class("office")
         full, emptied = office(200, 112), office(200, 112, frozenset({"pingpong", "foosball"}))

@@ -11,6 +11,7 @@ closed = []                 # switched off: coffee, arcade, cooler, lunch, books
 ticket_pattern = '(?i)\b([a-z]{2,}-\d+)'   # agents whose labels share a match hold stand-ups
 active_fps = 10             # while anyone walks, cheers or plays
 still_fps = 3               # otherwise
+colours = "auto"            # auto, truecolor or 256
 
 # Optional: show a card's column and next step from a `board` CLI in the click bubble.
 # [board]

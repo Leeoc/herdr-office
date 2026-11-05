@@ -9,7 +9,7 @@ import time
 from typing import Optional
 
 from office import control
-from office.config import DATA_DIR, PLUGIN_ID, Config, apply_choices, load_config, load_palette, save_choices
+from office.config import DATA_DIR, PLUGIN_ID, Config, apply_choices, colour_mode, load_config, load_palette, save_choices
 from office.details import Board, load_details
 from office.input import DoubleClick, Terminal, parse, read_raw
 from office.menu import Menu, MenuItem
@@ -18,7 +18,7 @@ from office.people.person import Person
 from office.people.timing import TICK_SECONDS
 from office.pets import NO_PET, Pet, load_pets, next_pet
 from office.render.bubbles import draw_person_bubble, draw_pet_bubble
-from office.render.canvas import encode
+from office.render.canvas import Canvas, encode
 from office.render.frames import FrameBuilder
 from office.render.png import canvas_png
 from office.render.screen import Screen
@@ -26,13 +26,15 @@ from office.scenes import scene_class, scene_names
 from office.scenes.base import FrameView, Scene
 from office.sources.base import AgentSource, StatusLedger
 from office.sources.fake import FakeSource
-from office.sources.herdr import HerdrClient, HerdrError, HerdrEventSource, PollingSource
+from office.sources.herdr import HerdrClient, HerdrError, HerdrEventSource, PollingSource, herdr_cli
 
 SELECTION_SECONDS = 20
 PET_LINE_SECONDS = 3
 FLASH_SECONDS = 5
 MAX_CATCH_UP = 30
 LIVELY_POSES = ("walk", "cheer", "play")
+MIN_COLS, MIN_ROWS = 80, 24
+NOTICE_INK = (230, 230, 235)
 
 
 class Office:
@@ -43,6 +45,7 @@ class Office:
         self.crowd = Crowd(palette, config.ticket_pattern, config.nap_after_minutes * 60, config.closed)
         self.scene_name = config.scene if config.scene in scene_names() else "office"
         self.scene: Optional[Scene] = None
+        self.size = (MIN_COLS, MIN_ROWS)
         self.frames = FrameBuilder()
         self.confetti = tuple(tuple(c) for c in palette["confetti"])
         self.pet_kind = config.pet if config.pet in pets or config.pet == NO_PET else next(iter(pets), NO_PET)
@@ -62,6 +65,7 @@ class Office:
         self.flash_at = 0.0
 
     def fit(self, cols: int, rows: int) -> None:
+        self.size = (cols, rows)
         w, h = cols, max(24, (rows - 2) * 2)
         closed = frozenset(self.crowd.closed)
         wanted = scene_class(self.scene_name)
@@ -110,7 +114,20 @@ class Office:
         people = list(self.crowd.people.values())
         return FrameView(people, self.t, self.hour(), self.night(), self.crowd.alarm(), self.pet, self.confetti)
 
-    def canvas(self):
+    def too_small(self) -> bool:
+        return self.size[0] < MIN_COLS or self.size[1] < MIN_ROWS
+
+    def size_notice(self) -> Canvas:
+        cols, rows = self.size
+        canvas = Canvas(cols, max(2, (rows - 1) * 2), self.scene.fill)
+        lines = ["The office needs a bigger pane.", "At least %dx%d, this one is %dx%d." % (MIN_COLS, MIN_ROWS, cols, rows)]
+        for i, line in enumerate(lines):
+            canvas.label(max(0, (cols - len(line)) // 2), max(0, (rows - 1) // 2 - 1 + i), line[:cols], NOTICE_INK)
+        return canvas
+
+    def canvas(self) -> Canvas:
+        if self.too_small():
+            return self.size_notice()
         canvas = self.frames.build(self.scene, self.view())
         person = self.crowd.people.get(self.selected) if self.selected else None
         if person is not None:
@@ -159,7 +176,7 @@ class Office:
 
     def text(self) -> str:
         header, rows = self.frame()
-        return "\n".join([header] + [encode(row) for row in rows])
+        return "\n".join([header] + [encode(row, colour_mode(self.config)) for row in rows])
 
     def header(self) -> str:
         n = self.crowd.counts()
@@ -248,7 +265,7 @@ def make_source(config: Config, demo: bool) -> AgentSource:
 
 
 def animate(office: Office, source: AgentSource, inbox: control.Inbox) -> None:
-    screen = Screen(sys.stdout)
+    screen = Screen(sys.stdout, colour_mode(office.config))
     screen.enter()
     started = time.monotonic()
     try:
@@ -298,11 +315,22 @@ def settle(office: Office, source: AgentSource, ticks: int) -> None:
         office.step()
 
 
-def open_tab() -> None:
-    args = ["herdr", "plugin", "pane", "open", "--plugin", PLUGIN_ID, "--entrypoint", "office", "--placement", "tab", "--focus"]
-    if os.environ.get("HERDR_WORKSPACE_ID"):
-        args += ["--workspace", os.environ["HERDR_WORKSPACE_ID"]]
-    subprocess.run(args, check=False)
+def open_tab(workspace: Optional[str], cli=herdr_cli) -> None:
+    """Focus this workspace's office tab, or open one named after the office."""
+    existing = office_tab(workspace, cli)
+    if existing:
+        cli("tab", "focus", existing)
+        return
+    args = ["plugin", "pane", "open", "--plugin", PLUGIN_ID, "--entrypoint", "office", "--placement", "tab", "--focus"]
+    opened = cli(*args, *(["--workspace", workspace] if workspace else []))
+    tab = opened.get("plugin_pane", {}).get("pane", {}).get("tab_id")
+    if tab:
+        cli("tab", "rename", tab, "office")
+
+
+def office_tab(workspace: Optional[str], cli) -> Optional[str]:
+    panes = cli("pane", "list", *(["--workspace", workspace] if workspace else [])).get("panes", [])
+    return next((p["tab_id"] for p in panes if p.get("label") == "office" and p.get("tab_id")), None)
 
 
 def main(argv: Optional[list[str]] = None) -> None:
@@ -316,7 +344,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     args = parser.parse_args(argv)
     config = load_config()
     if args.command == "open":
-        open_tab()
+        open_tab(os.environ.get("HERDR_WORKSPACE_ID"))
         return
     if args.command == "snapshot":
         print("\n".join(control.request_snapshot(config.state_dir)) or "no office is running")

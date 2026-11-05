@@ -3,7 +3,7 @@ import os
 import tempfile
 import unittest
 
-from office.app import Office
+from office.app import Office, open_tab
 from office.config import Config, apply_choices, save_choices
 from office.input import parse
 from office.menu import Menu, MenuItem
@@ -76,6 +76,43 @@ class SceneSwitchTest(unittest.TestCase):
             office.press("enter")
             office.fit(200, 58)
             self.assertEqual(office.scene_name, "office")
+
+
+class SizeTest(unittest.TestCase):
+    def test_tiny_pane_shows_a_notice_instead_of_the_room(self):
+        with tempfile.TemporaryDirectory() as folder:
+            office = Office(Config(state_dir=folder), {}, {"hairs": [[0, 0, 0]], "skins": [[0, 0, 0]], "shirts": [[0, 0, 0]],
+                                                          "confetti": [[0, 0, 0]]})
+            office.fit(60, 20)
+            text = "".join(ch for _, (ch, _) in sorted(office.canvas().text.items(), key=lambda kv: (kv[0][1], kv[0][0])))
+            self.assertIn("At least 80x24, this one is 60x20.", text)
+
+
+class OpenTabTest(unittest.TestCase):
+    def herdr(self, panes):
+        calls = []
+
+        def cli(*args):
+            calls.append(args)
+            if args[:2] == ("pane", "list"):
+                return {"panes": panes}
+            if args[:3] == ("plugin", "pane", "open"):
+                return {"plugin_pane": {"pane": {"tab_id": "w1:t9"}}}
+            return {}
+        return calls, cli
+
+    def test_existing_office_tab_is_focused_not_duplicated(self):
+        calls, cli = self.herdr([{"pane_id": "w1:p1", "tab_id": "w1:t1", "label": None},
+                                 {"pane_id": "w1:p4", "tab_id": "w1:t3", "label": "office"}])
+        open_tab("w1", cli)
+        self.assertEqual(calls[-1], ("tab", "focus", "w1:t3"))
+        self.assertFalse(any(c[:3] == ("plugin", "pane", "open") for c in calls))
+
+    def test_new_office_tab_is_named_office(self):
+        calls, cli = self.herdr([{"pane_id": "w1:p1", "tab_id": "w1:t1", "label": None}])
+        open_tab("w1", cli)
+        self.assertIn("--workspace", calls[1])
+        self.assertEqual(calls[-1], ("tab", "rename", "w1:t9", "office"))
 
 
 class KeysTest(unittest.TestCase):

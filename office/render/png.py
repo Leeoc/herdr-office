@@ -38,7 +38,7 @@ def canvas_png(canvas: Canvas, scale: int = 8) -> bytes:
 def draw_glyph(rows: list[bytearray], left: int, top: int, scale: int, ch: str, fg: Colour, bg: Colour) -> None:
     cell_w, cell_h = scale, scale * 2
     paint(rows, left, top, cell_w, cell_h, bg)
-    dot = max(1, scale // 4)
+    dot = max(1, scale // 3)
     x0, y0 = left + (cell_w - 3 * dot) // 2, top + (cell_h - 5 * dot) // 2
     for i, bit in enumerate(GLYPHS.get(ch.upper(), UNKNOWN)):
         if bit == "1":

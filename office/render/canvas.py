@@ -1,3 +1,4 @@
+from functools import lru_cache
 from itertools import repeat
 from typing import Optional
 
@@ -80,12 +81,41 @@ class Canvas:
         return row
 
 
-def encode(cells: list[Cell]) -> str:
+TRUECOLOR, COLOURS_256 = "truecolor", "256"
+CUBE = (0, 95, 135, 175, 215, 255)
+
+
+def encode(cells: list[Cell], colours: str = TRUECOLOR) -> str:
     """Cells as terminal output, setting colours only where they change."""
     parts, last = [], None
+    pair = colour_pair if colours == TRUECOLOR else colour_pair_256
     for fg, bg, ch in cells:
         if (fg, bg) != last:
-            parts.append("\033[38;2;%d;%d;%dm\033[48;2;%d;%d;%dm" % (*fg, *bg))
+            parts.append(pair(fg, bg))
             last = (fg, bg)
         parts.append(ch)
     return "".join(parts) + "\033[0m"
+
+
+def colour_pair(fg: Colour, bg: Colour) -> str:
+    return "\033[38;2;%d;%d;%dm\033[48;2;%d;%d;%dm" % (*fg, *bg)
+
+
+def colour_pair_256(fg: Colour, bg: Colour) -> str:
+    return "\033[38;5;%dm\033[48;5;%dm" % (xterm_256(fg), xterm_256(bg))
+
+
+@lru_cache(maxsize=4096)
+def xterm_256(colour: Colour) -> int:
+    """The nearest of the 256-colour palette's colour cube and grey ramp."""
+    steps = [min(range(6), key=lambda i: abs(CUBE[i] - c)) for c in colour]
+    cube = tuple(CUBE[i] for i in steps)
+    grey_step = min(23, max(0, round((sum(colour) / 3 - 8) / 10)))
+    grey = (8 + grey_step * 10,) * 3
+    if distance(colour, grey) < distance(colour, cube):
+        return 232 + grey_step
+    return 16 + 36 * steps[0] + 6 * steps[1] + steps[2]
+
+
+def distance(a: Colour, b: Colour) -> int:
+    return sum((x - y) ** 2 for x, y in zip(a, b))

@@ -1,5 +1,6 @@
-{"id":"sub","result":{"type":"subscription_started"}}
-{"event":"pane.agent_status_changed","data":{"type":"pane_agent_status_changed","pane_id":"wQ:p2","workspace_id":"wQ","agent_status":"working","agent":"claude","display_agent":"Claude","state_labels":{},"title":"✳ Fixing the tests"}}
-{"event":"pane_agent_status_changed","data":{"type":"pane_agent_status_changed","pane_id":"wQ:p2","workspace_id":"wQ","agent_status":"blocked","agent":"claude"}}
+{"id":"rec","result":{"type":"subscription_started"}}
+{"data":{"agent":"claude","agent_status":"working","pane_id":"wQ:p2","workspace_id":"wQ"},"event":"pane.agent_status_changed"}
+{"data":{"agent":"claude","agent_status":"blocked","pane_id":"wQ:p2","workspace_id":"wQ"},"event":"pane.agent_status_changed"}
 {"event":"tab_focused","data":{"type":"tab_focused","tab_id":"wQ:t1","workspace_id":"wQ"}}
-{"event":"pane_agent_detected","data":{"type":"pane_agent_detected","pane_id":"w2H:p4","workspace_id":"w2H","agent":"claude","released":false}}
+{"data":{"agent":"claude","pane_id":"w2H:p4","type":"pane_agent_detected","workspace_id":"w2H"},"event":"pane_agent_detected"}
+{"data":{"agent":"claude","final_status":"unknown","pane_id":"w2H:p4","released":true,"type":"pane_agent_detected","workspace_id":"w2H"},"event":"pane_agent_detected"}

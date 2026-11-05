@@ -3,7 +3,7 @@ import struct
 import unittest
 import zlib
 
-from office.render.canvas import Canvas, encode
+from office.render.canvas import Canvas, encode, xterm_256
 from office.render.png import canvas_png
 from office.render.screen import Screen, changed_span
 
@@ -94,6 +94,25 @@ class DirtySpanTest(unittest.TestCase):
         canvas.label(0, 0, "x", BLUE)
         canvas.cells()
         self.assertEqual(base.cells(), [[(RED, RED, "▀"), (RED, RED, "▀")]])
+
+
+class ColourFallbackTest(unittest.TestCase):
+    def test_primaries_and_greys_land_on_their_palette_entries(self):
+        self.assertEqual((xterm_256((255, 0, 0)), xterm_256((0, 0, 255)), xterm_256((0, 0, 0))), (196, 21, 16))
+        self.assertEqual(xterm_256((128, 128, 128)), 244)
+
+    def test_256_colour_output_uses_palette_escapes(self):
+        self.assertEqual(encode([R], "256"), "\033[38;5;196m\033[48;5;196mx\033[0m")
+
+    def test_auto_follows_colorterm(self):
+        from unittest import mock
+
+        from office.config import Config, colour_mode
+        with mock.patch.dict("os.environ", {"COLORTERM": "truecolor"}):
+            self.assertEqual(colour_mode(Config()), "truecolor")
+        with mock.patch.dict("os.environ", {"COLORTERM": ""}):
+            self.assertEqual(colour_mode(Config()), "256")
+            self.assertEqual(colour_mode(Config(colours="truecolor")), "truecolor")
 
 
 class PngTest(unittest.TestCase):
