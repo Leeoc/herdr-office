@@ -10,7 +10,7 @@ from typing import Optional
 
 from office import control
 from office.config import DATA_DIR, PLUGIN_ID, Config, apply_choices, colour_mode, load_config, load_palette, save_choices
-from office.details import Board, load_details
+from office.details import Board, load_details, read_pane
 from office.input import DoubleClick, Terminal, parse, read_raw
 from office.menu import Menu, MenuItem
 from office.people.crowd import Crowd
@@ -52,6 +52,7 @@ class Office:
         self.night_mode = config.night
         self.menu = Menu()
         self.board = Board(**config.board) if config.board else None
+        self.pane_reader = read_pane
         self.chatter = random.Random()
         self.clicks = DoubleClick()
         self.t = 0
@@ -168,8 +169,28 @@ class Office:
                 self.choose(choice)
         elif key == "m":
             self.menu.toggle()
+        elif key in ("tab", "backtab"):
+            self.select_next(1 if key == "tab" else -1)
+        elif key == "enter" and self.selected in self.crowd.people:
+            jump_to(self.crowd.people[self.selected])
+        elif key == "esc":
+            self.selected = None
         elif key in KEYS:
             self.command(KEYS[key])
+
+    def select_next(self, step: int) -> None:
+        """Move the selection through everyone, desk by desk, so the office works without a mouse."""
+        order = sorted(self.crowd.people.values(), key=lambda p: (p.desk is None, p.desk or 0, p.key))
+        if not order:
+            return
+        keys = [p.key for p in order]
+        here = keys.index(self.selected) if self.selected in keys else (-1 if step > 0 else 0)
+        self.select(order[(here + step) % len(order)])
+
+    def select(self, person: Person) -> None:
+        self.selected, self.selected_at = person.key, time.time()
+        person.details = None
+        threading.Thread(target=load_details, args=(person, self.board, self.pane_reader), daemon=True).start()
 
     def frame(self) -> tuple[str, list]:
         return self.header(), self.canvas().cells()
@@ -201,11 +222,10 @@ class Office:
             jump_to(hit)
             self.selected = None
             return
-        self.selected = None if hit is None or hit.key == self.selected else hit.key
-        self.selected_at = time.time()
-        if hit is not None and self.selected:
-            hit.details = None
-            threading.Thread(target=load_details, args=(hit, self.board), daemon=True).start()
+        if hit is None or hit.key == self.selected:
+            self.selected = None
+        else:
+            self.select(hit)
 
     def pet_hit(self, px: int, py: int) -> bool:
         if self.pet is None:
@@ -356,6 +376,8 @@ def main(argv: Optional[list[str]] = None) -> None:
     config.pet = args.pet or os.environ.get("OFFICE_PET") or config.pet
     office = Office(config, load_pets(DATA_DIR, config.config_dir), load_palette(config))
     source = make_source(config, args.demo)
+    if isinstance(source, FakeSource):
+        office.pane_reader = source.pane_text
     if args.once:
         settle(office, source, args.settle)
         print(office.text())

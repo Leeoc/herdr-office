@@ -8,7 +8,8 @@ from typing import Optional
 MOUSE_ON, MOUSE_OFF = "\033[?1000h\033[?1006h", "\033[?1006l\033[?1000l"
 CLICK = re.compile(r"\x1b\[<(\d+);(\d+);(\d+)([Mm])")
 KEY = re.compile(r"\x1b\[<[\d;]+[Mm]|\x1b\[[\d;?]*([A-Za-z~])|\x1bO([A-Za-z])|(\x1b)|(.)", re.S)
-NAMED_KEYS = {"A": "up", "B": "down", "C": "right", "D": "left", "\r": "enter", "\n": "enter", " ": "space", "\x1b": "esc"}
+NAMED_KEYS = {"A": "up", "B": "down", "C": "right", "D": "left", "Z": "backtab", "\t": "tab", "\r": "enter", "\n": "enter",
+              " ": "space", "\x1b": "esc"}
 DOUBLE_CLICK_SECONDS = 0.45
 ESCAPE_GRACE = 0.02
 

@@ -115,9 +115,37 @@ class OpenTabTest(unittest.TestCase):
         self.assertEqual(calls[-1], ("tab", "rename", "w1:t9", "office"))
 
 
+class KeyboardSelectionTest(unittest.TestCase):
+    def test_tab_walks_through_people_and_escape_clears(self):
+        from office.sources.fake import FakeSource
+        with tempfile.TemporaryDirectory() as folder:
+            office = Office(Config(state_dir=folder), {}, {"hairs": [[0, 0, 0]], "skins": [[0, 0, 0]], "shirts": [[0, 0, 0]],
+                                                          "confetti": [[0, 0, 0]]})
+            source = FakeSource(clock=lambda: 0.0)
+            office.pane_reader = source.pane_text
+            source.advance()
+            office.fit(200, 58)
+            office.sync(source)
+            office.step()
+            office.press("tab")
+            first = office.selected
+            office.press("tab")
+            self.assertNotEqual(office.selected, first)
+            office.press("backtab")
+            self.assertEqual(office.selected, first)
+            office.press("esc")
+            self.assertIsNone(office.selected)
+
+    def test_demo_panes_read_like_claude(self):
+        from office.details import pane_story
+        from office.sources.fake import demo_pane
+        story = pane_story(demo_pane("migrations"))
+        self.assertEqual((story["asked"], story["question"]), ("tidy up the old database migrations", "Do you want to proceed?"))
+
+
 class KeysTest(unittest.TestCase):
     def test_arrows_space_enter_and_escape_have_names(self):
-        self.assertEqual(parse("m\x1b[A\x1b[B \r\x1b")[1], ["m", "up", "down", "space", "enter", "esc"])
+        self.assertEqual(parse("m\x1b[A\x1b[B \r\x1b\t\x1b[Z")[1], ["m", "up", "down", "space", "enter", "esc", "tab", "backtab"])
 
     def test_mouse_reports_are_clicks_not_keys(self):
         self.assertEqual(parse("\x1b[<0;5;6M\x1b[<0;5;6m"), ([(4, 5)], []))

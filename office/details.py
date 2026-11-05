@@ -97,8 +97,8 @@ class Board:
         return json.loads(subprocess.run(args, capture_output=True, text=True, timeout=5).stdout or "[]")
 
 
-def load_details(person, board: Optional[Board]) -> None:
+def load_details(person, board: Optional[Board], reader=read_pane) -> None:
     """Fills `person.details` from their pane; run it on a background thread so the animation never waits on herdr."""
-    story = pane_story(read_pane(person.pane_id))
+    story = pane_story(reader(person.pane_id))
     story["board"] = board.line(person.space) if board and person.space else None
     person.details = story

@@ -16,7 +16,7 @@ Every agent herdr knows about is a person in the office:
 - After 18:00 the room dims and working desks switch their lamps on.
 - An office pet wanders along the bottom and says things.
 
-Click someone to see what they were asked, what they are doing and any question waiting for you. Double-click to jump to their pane.
+Click someone (or press `Tab`) to see what they were asked, what they are doing and any question waiting for you. Double-click (or `Enter`) to jump to their pane.
 
 Press `m` for the menu: pick the scene, the pet and night mode, and switch any of the lounge's amenities off or on (switched-off furniture leaves the room). Choices are remembered.
 
@@ -55,6 +55,9 @@ Then run **office: open** from the command palette. It opens the office in a tab
 | `m` | menu: ↑↓ (or `j`/`k`) to move, space or enter to change, `m` or esc to close; items can be clicked too |
 | click a person or their desk | speech bubble with their task, current step and status |
 | double-click | jump to that agent's pane |
+| `Tab` / `Shift-Tab` | select the next or previous person and show their bubble, no mouse needed |
+| `Enter` | jump to the selected person's pane |
+| `Esc` | close the bubble |
 | click the pet | it says something |
 | `p` | next pet (cat, dog, chicken, duck, none) |
 | `n` | toggle night |
@@ -94,7 +97,7 @@ bin/office --demo       # a scripted day, no herdr needed
 bin/office --once       # print one frame and exit
 bin/office --once --demo --png office.png
 python3 -m unittest     # the tests
-python3 tools/demo_gif.py   # re-render screenshots/demo.gif from the demo day
+vhs tools/demo.tape     # re-record screenshots/demo.gif in a real terminal (needs vhs)
 ```
 
 `OFFICE_HOUR=21` pretends it is 21:00.
@@ -146,7 +149,7 @@ office/details.py     what a Claude pane says it is doing, for the click bubble
 office/menu.py        the settings panel
 office/pathing.py     walking routes round furniture
 data/                 pets and people's colours
-tools/demo_gif.py     renders the README's GIF (with a small built-in GIF encoder)
+tools/demo.tape       the vhs script that records the README's GIF from the demo day
 ```
 
 ## Licence

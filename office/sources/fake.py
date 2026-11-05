@@ -40,6 +40,28 @@ DEMO_DAY = (
 )
 
 
+DEMO_PANES = {
+    "app-142:p1": ("add a retry to the upload client and run the tests", "Bash(uv run pytest -q tests/upload)",
+                   "Percolating… (47s · esc to interrupt)"),
+    "app-142:p2": ("write the upload client's docs", "Edit(docs/upload.md)", "Composing… (12s · esc to interrupt)"),
+    "app-150": ("make the settings page load faster", "Read(src/settings/page.tsx)", "Pondering… (1m 3s · esc to interrupt)"),
+    "migrations": ("tidy up the old database migrations", "Bash(rm -rf migrations/old)", None),
+    "app-139": ("fix the flaky login test", "Bash(npm test -- login)", "Done in 4m 10s"),
+    "app-161": ("add a dark mode toggle", "Read(src/theme.ts)", "Thinking… (5s · esc to interrupt)"),
+}
+
+
+def demo_pane(key: str) -> list[str]:
+    """A made-up Claude pane for a demo agent, shaped like the real thing so the bubble reads it the same way."""
+    asked, step, status = DEMO_PANES.get(key, ("look around the codebase", "Glob(**/*.md)", None))
+    lines = ["❯ " + asked, "⏺ " + step]
+    if status:
+        lines.append("✻ " + status)
+    if key == "migrations":
+        lines += ["╭────────────────────────────╮", "│ Do you want to proceed?    │", "╰────────────────────────────╯"]
+    return lines
+
+
 class FakeSource(AgentSource):
     """Plays a script of status changes, for tests and `--demo`. The script loops after `length` seconds."""
 
@@ -48,6 +70,10 @@ class FakeSource(AgentSource):
         self.script, self.length, self.clock = sorted(script, key=lambda c: c.at), length, clock
         self.started = clock()
         self.stopping = threading.Event()
+
+    @staticmethod
+    def pane_text(pane_id: str) -> list[str]:
+        return demo_pane(pane_id.removeprefix("demo:"))
 
     def start(self) -> None:
         self.advance()
