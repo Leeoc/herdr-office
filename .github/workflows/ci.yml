@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.11", "3.12", "3.13"]
+        include:
+          - os: macos-latest
+            python: "3.13"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Tests
+        run: python -m unittest -v
+      - name: Draws a demo frame
+        env:
+          COLUMNS: "160"
+          LINES: "46"
+          HERDR_PLUGIN_STATE_DIR: ${{ runner.temp }}/office-state
+        run: |
+          mkdir -p "$HERDR_PLUGIN_STATE_DIR"
+          bin/office --once --demo --png "$RUNNER_TEMP/frame.png" > /dev/null
+          test -s "$RUNNER_TEMP/frame.png"
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      - run: ruff check .
+      - name: Plugin manifest parses
+        run: python -c "import tomllib; m = tomllib.load(open('herdr-plugin.toml', 'rb')); assert m['id'] and m['version']"
