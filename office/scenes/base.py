@@ -1,6 +1,6 @@
 import random
 from abc import abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Hashable, Optional
 
 from office.pathing import Rect, WalkGrid
@@ -8,6 +8,8 @@ from office.people.person import Person
 from office.people.venue import Point, Venue
 from office.pets import Pet
 from office.render.canvas import Canvas, Colour
+
+DESK_BUILD_TICKS = 24
 
 
 @dataclass
@@ -21,6 +23,7 @@ class FrameView:
     alarm: bool
     pet: Optional[Pet]
     confetti: tuple[Colour, ...]
+    building: dict[int, int] = field(default_factory=dict)
 
 
 class Scene(Venue):
@@ -35,7 +38,7 @@ class Scene(Venue):
     fill: Colour = (0, 0, 0)
     title = "the office"
 
-    def __init__(self, w: int, h: int, closed: frozenset[str] = frozenset()):
+    def __init__(self, w: int, h: int, closed: frozenset[str] = frozenset(), desks: Optional[int] = None):
         self.w, self.h, self.closed = w, h, closed
         self.grid = WalkGrid(self.floor(), self.obstacles(), self.footprint, cell=3)
 
@@ -50,6 +53,11 @@ class Scene(Venue):
             if self.grid.is_open(self.grid.cell_of(spot)):
                 return spot
         return spot
+
+    @classmethod
+    @abstractmethod
+    def desk_capacity(cls, w: int, h: int) -> int:
+        """How many desks fit in a room of this size."""
 
     @abstractmethod
     def floor(self) -> Rect:

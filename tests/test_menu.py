@@ -85,7 +85,7 @@ class SizeTest(unittest.TestCase):
                                                           "confetti": [[0, 0, 0]]})
             office.fit(60, 20)
             text = "".join(ch for _, (ch, _) in sorted(office.canvas().text.items(), key=lambda kv: (kv[0][1], kv[0][0])))
-            self.assertIn("At least 80x24, this one is 60x20.", text)
+            self.assertIn("At least 60x24, this one is 60x20.", text)
 
 
 class OpenTabTest(unittest.TestCase):
@@ -168,3 +168,60 @@ class ChoicesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HeaderTest(unittest.TestCase):
+    def test_narrow_pane_drops_extras_but_keeps_who_needs_you(self):
+        import re
+        with tempfile.TemporaryDirectory() as folder:
+            office = Office(Config(state_dir=folder), {}, {"hairs": [[0, 0, 0]], "skins": [[0, 0, 0]], "shirts": [[0, 0, 0]],
+                                                          "confetti": [[0, 0, 0]]})
+            office.fit(200, 58)
+            self.assertIn("m menu", office.header())
+            office.fit(60, 24)
+            visible = re.sub(r"\033\[[0-9;]*m", "", office.header())
+            self.assertLessEqual(len(visible) + 1, 60)
+            self.assertIn("need you", visible)
+            self.assertNotIn("m menu", visible)
+
+
+class RoomSizeTest(unittest.TestCase):
+    def office(self, folder):
+        return Office(Config(state_dir=folder), {}, {"hairs": [[0, 0, 0]], "skins": [[0, 0, 0]], "shirts": [[0, 0, 0]],
+                                                    "confetti": [[0, 0, 0]]})
+
+    def test_room_has_two_spare_desks_and_builds_more_as_agents_arrive(self):
+        with tempfile.TemporaryDirectory() as folder:
+            office = self.office(folder)
+            office.fit(185, 55)
+            office.arrange(3)
+            self.assertEqual(office.scene.desk_count(), 5)
+            self.assertEqual(office.building, {})
+            office.welcoming = True
+            office.arrange(5)
+            self.assertEqual(office.scene.desk_count(), 7)
+            self.assertEqual(sorted(office.building), [5, 6])
+
+    def test_spare_desks_linger_before_the_room_shrinks(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as folder:
+            office = self.office(folder)
+            office.fit(185, 55)
+            office.arrange(6)
+            with mock.patch("office.app.time.time", return_value=1000.0):
+                office.arrange(1)
+            self.assertEqual(office.scene.desk_count(), 8)
+            with mock.patch("office.app.time.time", return_value=1061.0):
+                office.arrange(1)
+            self.assertEqual(office.scene.desk_count(), 3)
+
+    def test_big_screens_zoom_in_until_the_desks_no_longer_fit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            office = self.office(folder)
+            office.fit(360, 100)
+            office.arrange(3)
+            self.assertEqual(office.scale, 2)
+            office.arrange(40)
+            self.assertEqual(office.scale, 1)
+            office.fit(72, 53)
+            self.assertEqual(office.scale, 1)

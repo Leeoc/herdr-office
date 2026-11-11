@@ -130,3 +130,20 @@ class PngTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ZoomTest(unittest.TestCase):
+    def test_zoomed_labels_keep_their_letters_together(self):
+        from office.render.frames import zoom_labels
+        text = {(3, 1): ("o", (0, 0, 0)), (4, 1): ("k", (0, 0, 0)), (9, 1): ("!", (0, 0, 0))}
+        self.assertEqual(sorted(zoom_labels(text, 2)), [(6, 2), (7, 2), (18, 2)])
+
+    def test_zoom_doubles_each_pixel_and_copies_what_moved(self):
+        from office.render.canvas import Canvas
+        from office.render.frames import zoom, zoom_changes
+        background = Canvas(4, 4, (0, 0, 0))
+        frame = Canvas.over(background)
+        frame.dot(1, 1, (255, 0, 0))
+        out = zoom_changes(frame, zoom(background, 2, 8, 8), 2)
+        self.assertEqual([out.px[y][x] for y in (2, 3) for x in (2, 3)], [(255, 0, 0)] * 4)
+        self.assertEqual(out.px[0][0], (0, 0, 0))

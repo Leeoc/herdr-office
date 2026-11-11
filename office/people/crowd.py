@@ -45,10 +45,10 @@ class Crowd:
     def tick(self, venue: Venue, t: int, now: float) -> None:
         self.assign_desks(venue.desk_count())
         self.schedule_meetings(t)
+        self.give_out_beds(now, venue)
         self.schedule_games(venue.games(), t, now)
-        self.number_nappers(now)
         for person in list(self.people.values()):
-            person.tick(venue, t, now, self.nap_after, lambda activity, asker=person: self.free_spot(activity, asker))
+            person.tick(venue, t, lambda activity, asker=person: self.free_spot(activity, asker))
             if person.leaving and person.arrived():
                 del self.people[person.key]
 
@@ -57,14 +57,21 @@ class Crowd:
             person.forget_places()
 
     def assign_desks(self, desk_count: int) -> None:
+        """Desks go to whoever needs one most; when the room is short, an idle agent gives theirs up to a busy one.
+
+        Within the same need, whoever already has a desk keeps it, so nobody is shuffled about for no reason.
+        """
+        def need(person: Person) -> tuple:
+            settled = person.desk is not None and person.desk < desk_count
+            return DESK_PRIORITY.get(person.status, len(DESK_PRIORITY)), not settled, person.key
+
+        seated = {p.key for p in sorted(self.present(), key=need)[:desk_count]}
         for person in self.people.values():
-            if person.leaving or person.desk is not None and person.desk >= desk_count:
+            if person.key not in seated or person.desk is not None and person.desk >= desk_count:
                 person.desk = None
-        taken = {p.desk for p in self.people.values() if p.desk is not None}
-        free = [d for d in range(desk_count) if d not in taken]
-        for person in sorted(self.present(), key=lambda p: (DESK_PRIORITY.get(p.status, 3), p.key)):
-            if person.desk is None and free:
-                person.desk = free.pop(0)
+        free = [d for d in range(desk_count) if d not in {p.desk for p in self.people.values()}]
+        for person in sorted((p for p in self.people.values() if p.key in seated and p.desk is None), key=need):
+            person.desk = free.pop(0)
 
     def schedule_meetings(self, t: int) -> None:
         for person in self.people.values():
@@ -93,7 +100,7 @@ class Crowd:
             every = ticks(game.every_seconds)
             if game.name in self.closed or t % every >= ticks(game.length_seconds):
                 continue
-            free = [p for p in self.idle_and_awake(now) if p.key not in playing]
+            free = [p for p in self.idle_and_awake() if p.key not in playing]
             if len(free) < len(game.spots):
                 continue
             first = (t // every * len(game.spots)) % len(free)
@@ -102,15 +109,23 @@ class Crowd:
                 player.game = (game, place)
                 playing.add(player.key)
 
-    def idle_and_awake(self, now: float) -> list[Person]:
+    def idle_and_awake(self) -> list[Person]:
         return sorted((p for p in self.present()
-                       if p.status in RESTING_STATUSES and not p.napping(now, self.nap_after) and p.meeting is None),
+                       if p.status in RESTING_STATUSES and p.nap_index is None and p.meeting is None),
                       key=lambda p: p.key)
 
-    def number_nappers(self, now: float) -> None:
-        nappers = sorted((p for p in self.present() if p.napping(now, self.nap_after)), key=lambda p: p.key)
-        for index, person in enumerate(nappers):
-            person.nap_index = index
+    def give_out_beds(self, now: float, venue: Venue) -> None:
+        """Nappers keep their bed; free beds go to whoever has been idle longest, and the rest stay up."""
+        beds = len(venue.nap_spots())
+        sleepy = sorted((p for p in self.present() if p.sleepy(now, self.nap_after)), key=lambda p: (p.since, p.key))
+        sleepy_keys = {p.key for p in sleepy}
+        for person in self.people.values():
+            if person.key not in sleepy_keys or person.nap_index is not None and person.nap_index >= beds:
+                person.nap_index = None
+        free = [bed for bed in range(beds) if bed not in {p.nap_index for p in sleepy}]
+        for person in sleepy:
+            if person.nap_index is None and free:
+                person.nap_index = free.pop(0)
 
     def free_spot(self, activity: Activity, asker: Person) -> Optional[Point]:
         if activity.name in self.closed:

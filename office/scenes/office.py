@@ -28,6 +28,14 @@ CAN, WATER = (70, 140, 200), (120, 180, 240)
 FOOS_GREEN, FOOS_LINE, ROD = (60, 130, 70), (225, 235, 225), (170, 170, 180)
 RED_TEAM, BLUE_TEAM, BALL_WHITE = (210, 60, 60), (60, 110, 210), (250, 250, 240)
 READING_BOOK, READING_COVER = (240, 240, 230), (200, 60, 60)
+DUST = (215, 205, 190)
+SPARK = (255, 240, 180)
+FREE_STANDING = {"naps": ("couch", Rect(-2, -3, 28, 9)), "arcade": ("arcade", Rect(0, 0, 9, 16)),
+                 "plant": ("plant", Rect(-1, 4, 13, 7)), "pingpong": ("table", Rect(-7, -4, 34, 13)),
+                 "foosball": ("foosball", Rect(-6, -6, 29, 17))}
+FLOOR_STEP = 2
+WALKWAY = 7
+BUILT_AT = 12
 
 
 class OfficeScene(Scene):
@@ -41,15 +49,13 @@ class OfficeScene(Scene):
     SLOT_W, SLOT_H = 20, 18
     DESK_W = 15
 
-    def __init__(self, w: int, h: int, closed: frozenset[str] = frozenset()):
+    def __init__(self, w: int, h: int, closed: frozenset[str] = frozenset(), desks: Optional[int] = None):
         self.closed = closed
-        self.wall_h = max(10, int(h * 0.26) // 2 * 2)
-        self.lounge_w = 56 if w >= 110 else max(30, w // 3)
+        self.wall_h = wall_height(h)
+        self.lounge_w = lounge_width(w)
         self.lounge_x = w - self.lounge_w
         self.door_x = 3
-        cols = max(1, (self.lounge_x - 6) // self.SLOT_W)
-        rows = max(1, (h - self.wall_h - 4) // self.SLOT_H)
-        self.desks = [(4 + c * self.SLOT_W, self.wall_h + 3 + r * self.SLOT_H) for r in range(rows) for c in range(cols)]
+        self.desks = self.desk_spots(w, h)[:desks]
         self.couch = (self.lounge_x + 6, h - 9)
         self.cooler = (self.lounge_x + self.lounge_w - 9, self.wall_h - 4)
         self.board_x = max(2, self.lounge_x - 18)
@@ -66,39 +72,83 @@ class OfficeScene(Scene):
         self.game_list = tuple(g for g in self.lay_out_games() if g.name not in self.no_room)
         super().__init__(w, h, closed)
 
+    @classmethod
+    def desk_spots(cls, w: int, h: int) -> list[tuple[int, int]]:
+        """Every desk the floor could hold, filled a row at a time from the door, so adding one never moves the rest."""
+        wall_h = wall_height(h)
+        cols = max(1, (w - lounge_width(w) - 6) // cls.SLOT_W)
+        rows = max(1, (h - wall_h - 4) // cls.SLOT_H)
+        return [(4 + c * cls.SLOT_W, wall_h + 3 + r * cls.SLOT_H) for r in range(rows) for c in range(cols)]
+
+    @classmethod
+    def desk_capacity(cls, w: int, h: int) -> int:
+        return len(cls.desk_spots(w, h))
+
     def has(self, amenity: str) -> bool:
         return amenity not in self.closed and amenity not in self.no_room
 
     def crowded_out(self, w: int, h: int) -> set[str]:
-        """Amenities left out because they would overlap something already placed, most expendable last in line."""
-        placed = [Rect(self.lounge_x + 4, 2, 7, 5), Rect(self.board_x, 2, 14, self.wall_h)]
-        crowded = set()
-        for name, rects in self.footprints():
-            inside = all(r.x >= 0 and r.y >= 0 and r.x + r.w <= w and r.y + r.h <= h for r in rects)
-            if inside and not any(r.overlaps(other) for r in rects for other in placed):
+        """Amenities left out for want of space, most expendable last in line.
+
+        Wall fittings stay where they are or go. Free-standing furniture tries its usual spot in the
+        lounge, then any free patch of floor, so a small room still gets a game or two.
+        """
+        placed = [Rect(self.lounge_x + 4, 2, 7, 5), Rect(self.board_x, 2, 14, self.wall_h), Rect(0, 0, self.door_x + 8, self.wall_h),
+                  Rect(self.board_x - 2, self.wall_h - 8, 20, 18), *self.desk_floor(w, h)]
+        crowded, standing = set(), []
+        wall_first = sorted(self.footprints(), key=lambda item: item[0] in FREE_STANDING)
+        for name, rects in wall_first:
+            if name in FREE_STANDING:
+                rects = self.free_standing_spot(name, placed, standing, w, h)
+                standing += rects or []
+            if rects and all(r.x >= 0 and r.y >= 0 and r.x + r.w <= w and r.y + r.h <= h for r in rects) \
+                    and not any(r.overlaps(other) for r in rects for other in placed):
                 placed += rects
             else:
                 crowded.add(name)
         return crowded
 
+    def desk_floor(self, w: int, h: int) -> list[Rect]:
+        """The floor kept for desks: every row that has one, so a new desk in that row never lands on furniture."""
+        spots = self.desk_spots(w, h)
+        per_row = sum(1 for _, y in spots if y == spots[0][1])
+        rows_used = -(-len(self.desks) // per_row)
+        return [Rect(ox - 2, oy, self.SLOT_W, self.SLOT_H) for ox, oy in spots[:rows_used * per_row]]
+
+    def free_standing_spot(self, name: str, placed: list[Rect], standing: list[Rect], w: int, h: int) -> Optional[list[Rect]]:
+        """Its usual spot if free, else the first patch of floor with a walkway between it and the other furniture."""
+        attribute, shape = FREE_STANDING[name]
+        top = self.wall_h + 2
+
+        def fits(rect: Rect, walkway: int) -> bool:
+            clearance = Rect(rect.x - walkway, rect.y - walkway, rect.w + 2 * walkway, rect.h + 2 * walkway)
+            return rect.x >= 0 and rect.y >= top and rect.x + rect.w <= w and rect.y + rect.h <= h \
+                and not any(rect.overlaps(other) for other in placed) and not any(clearance.overlaps(other) for other in standing)
+
+        if fits(self.standing_rect(name), 0):
+            return [self.standing_rect(name)]
+        for y in range(h - shape.h, top - 1, -FLOOR_STEP):
+            for x in range(w - shape.w, -1, -FLOOR_STEP):
+                if fits(Rect(x, y, shape.w, shape.h), WALKWAY):
+                    setattr(self, attribute, (x - shape.x, y - shape.y))
+                    return [Rect(x, y, shape.w, shape.h)]
+        return None
+
     def footprints(self) -> list[tuple[str, list[Rect]]]:
         """Each amenity's furniture plus the room its users stand in, in the order they get space."""
-        sx, sy = self.couch
-        ax, ay = self.arcade
         mx, my = self.coffee
-        tx, ty = self.table
-        fx, fy = self.foosball
-        return [
-            ("naps", [Rect(sx - 2, sy - 3, 28, 9)]),
-            ("arcade", [Rect(ax, ay, 9, 16)]),
-            ("cooler", [Rect(self.cooler[0] - 1, self.cooler[1], 7, 22)]),
-            ("coffee", [Rect(mx - 2, my, 10, 18)]),
-            ("plant", [Rect(self.plant[0] - 1, self.plant[1] + 4, 13, 7)]),
-            ("pingpong", [Rect(tx - 7, ty - 4, 34, 13)]),
-            ("lunch", [Rect(self.fridge_x, self.wall_h - 14, self.oven_x + 12 - self.fridge_x, 18)]),
-            ("books", [Rect(self.shelf_x, 2, 12, self.wall_h), Rect(0, 0, self.door_x + 8, self.wall_h)]),
-            ("foosball", [Rect(fx - 6, fy - 6, 29, 17)]),
-        ]
+        wall_fittings = {
+            "cooler": [Rect(self.cooler[0] - 1, self.cooler[1], 7, 22)],
+            "coffee": [Rect(mx - 2, my, 10, 18)],
+            "lunch": [Rect(self.fridge_x, self.wall_h - 14, self.oven_x + 12 - self.fridge_x, 18)],
+            "books": [Rect(self.shelf_x, 2, 12, self.wall_h)],
+        }
+        order = ("naps", "arcade", "cooler", "coffee", "plant", "pingpong", "lunch", "books", "foosball")
+        return [(name, wall_fittings[name] if name in wall_fittings else [self.standing_rect(name)]) for name in order]
+
+    def standing_rect(self, name: str) -> Rect:
+        attribute, shape = FREE_STANDING[name]
+        return shape.moved(*getattr(self, attribute))
 
     def lay_out_activities(self) -> tuple[Activity, ...]:
         floor_y = float(self.wall_h + 1)
@@ -136,8 +186,10 @@ class OfficeScene(Scene):
     def entrance(self) -> Point:
         return float(self.door_x), float(self.wall_h - 6)
 
-    def nap_spot(self, index: int) -> Point:
-        return float(self.couch[0] + 2 + (index % 2) * 10), float(self.couch[1] - 1)
+    def nap_spots(self) -> tuple[Point, ...]:
+        if "naps" in self.no_room:
+            return ()
+        return tuple((float(self.couch[0] + 2 + seat * 10), float(self.couch[1] - 1)) for seat in range(2))
 
     def meeting_spot(self, index: int) -> Point:
         return float(self.board_x - 1 + (index % 3) * 6), float(self.wall_h - 7 + (index // 3) * 10)
@@ -217,7 +269,7 @@ class OfficeScene(Scene):
         if self.has("books"):
             self.paint_bookshelf(c)
         self.paint_lounge(c)
-        self.paint_desks(c)
+        self.paint_desks(c, view.building)
 
     def paint_wall(self, c: Canvas) -> None:
         c.rect(0, 0, self.w, self.wall_h, WALL)
@@ -374,6 +426,9 @@ class OfficeScene(Scene):
         items = []
         for index, desk in enumerate(self.desks):
             owner = owners.get(index)
+            if index in view.building:
+                items.append((desk[1] + 13, lambda c, d=desk, a=view.building[index]: self.draw_building_desk(c, d, a)))
+                continue
             if self.hidden_behind(desk, sprites):
                 items.append((desk[1] + 5, lambda c, d=desk: self.draw_chair(c, d)))
                 items.append((desk[1] + 13, lambda c, d=desk: self.draw_desk(c, d)))
@@ -446,10 +501,26 @@ class OfficeScene(Scene):
         if playing:
             c.dot(ax + 2 + (t // 2) % 5, ay + 5, (255, 255, 255))
 
-    def paint_desks(self, c: Canvas) -> None:
-        for desk in self.desks:
-            self.draw_chair(c, desk)
-            self.draw_desk(c, desk)
+    def paint_desks(self, c: Canvas, building: dict[int, int]) -> None:
+        for index, desk in enumerate(self.desks):
+            if index not in building:
+                self.draw_chair(c, desk)
+                self.draw_desk(c, desk)
+
+    def draw_building_desk(self, c: Canvas, desk: tuple[int, int], age: int) -> None:
+        ox, oy = desk
+        seam = oy + 14 - age
+        self.draw_desk(Clipped(c, seam), desk)
+        if seam > oy + 2:
+            for x in range(ox + (age % 3), ox + 15, 3):
+                c.dot(x, seam - 1, SPARK)
+            return
+        self.draw_chair(c, desk)
+        puff = age - BUILT_AT
+        if puff < 6:
+            for side in (-1, 1):
+                for i in range(2):
+                    c.dot(ox + 7 + side * (9 + puff + i * 2), oy + 13 - i - puff // 3, DUST)
 
     @staticmethod
     def draw_chair(c: Canvas, desk: tuple[int, int]) -> None:
@@ -616,6 +687,30 @@ class OfficeScene(Scene):
     def draw_pet(c: Canvas, pet, x: int, y: int, facing: int, t: int) -> None:
         for dx, dy, colour in pet.pixels(t):
             c.dot(x + dx if facing == 1 else x + 5 - dx, y + dy, colour)
+
+
+class Clipped:
+    """Draws onto a canvas, skipping everything above row `top`, so furniture can appear a row at a time."""
+
+    def __init__(self, canvas: Canvas, top: int):
+        self.canvas, self.top = canvas, top
+
+    def dot(self, x, y, colour: Colour) -> None:
+        if y >= self.top:
+            self.canvas.dot(x, y, colour)
+
+    def rect(self, x, y, w: int, h: int, colour: Colour) -> None:
+        for yy in range(max(int(y), self.top), int(y) + h):
+            for xx in range(int(x), int(x) + w):
+                self.canvas.dot(xx, yy, colour)
+
+
+def wall_height(h: int) -> int:
+    return max(10, int(h * 0.26) // 2 * 2)
+
+
+def lounge_width(w: int) -> int:
+    return 56 if w >= 110 else max(30, w // 3)
 
 
 def facing_pen(c: Canvas, x: int, y: int, facing: int) -> Callable[[int, int, Colour], None]:

@@ -51,7 +51,8 @@ class Venue(ABC):
     def entrance(self) -> Point: ...
 
     @abstractmethod
-    def nap_spot(self, index: int) -> Point: ...
+    def nap_spots(self) -> tuple[Point, ...]:
+        """Where people nap, one each; empty when the room has no space for it."""
 
     @abstractmethod
     def meeting_spot(self, index: int) -> Point: ...
@@ -72,4 +73,4 @@ class Venue(ABC):
     def amenities(self) -> list[tuple[str, str]]:
         """(name, title) of everything here that can be switched off."""
         return ([(a.name, a.title) for a in self.activities()] + [(g.name, g.title) for g in self.games()]
-                + [(NAPS, self.nap_title)])
+                + ([(NAPS, self.nap_title)] if self.nap_spots() else []))

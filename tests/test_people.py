@@ -24,7 +24,7 @@ class OpenRoom(Venue):
     def seat(self, desk): return float(desk * 10), 40.0
     def desk_stand(self, desk): return float(desk * 10), 38.0
     def entrance(self): return 0.0, 0.0
-    def nap_spot(self, index): return 50.0 + index, 60.0
+    def nap_spots(self): return ((50.0, 60.0), (51.0, 60.0))
     def meeting_spot(self, index): return 30.0 + index, 5.0
     def wander_spot(self, rng: random.Random): return 75.0, 25.0
     def activities(self): return self.places
@@ -176,10 +176,40 @@ class CapacityTest(unittest.TestCase):
         run(self.crowd, self.venue, 50, start=ticks(100) - 60)
         self.assertNotEqual(self.crowd.people["a"].state, "nap")
 
+    def test_only_as_many_nap_as_there_are_beds(self):
+        self.crowd.sync([agent(k, "idle", since=NOW - 7200 - i) for i, k in enumerate("abcde")], self.venue, 1, newcomers=False)
+        run(self.crowd, self.venue, 300)
+        nappers = sorted(k for k, p in self.crowd.people.items() if p.pose() == "lie")
+        self.assertEqual(nappers, ["d", "e"])
+
+    def test_no_couch_in_the_room_means_no_naps(self):
+        self.venue.nap_spots = lambda: ()
+        self.crowd.sync([agent("a", "idle", since=NOW - 7200)], self.venue, 1, newcomers=False)
+        run(self.crowd, self.venue, 300)
+        self.assertNotEqual(self.crowd.people["a"].pose(), "lie")
+        self.assertNotIn("naps", dict(self.venue.amenities()))
+
     def test_desks_go_to_the_blocked_first_when_short(self):
         venue = OpenRoom(desks=1)
         self.crowd.sync([agent("a", "working"), agent("b", "blocked")], venue, 1, newcomers=False)
         self.crowd.tick(venue, 1, NOW)
+        self.assertEqual((self.crowd.people["b"].desk, self.crowd.people["a"].desk), (0, None))
+
+    def test_a_busy_newcomer_takes_an_idle_agents_desk_when_the_room_is_full(self):
+        venue = OpenRoom(desks=1)
+        self.crowd.sync([agent("a", "idle")], venue, 1, newcomers=False)
+        self.crowd.tick(venue, 1, NOW)
+        self.assertEqual(self.crowd.people["a"].desk, 0)
+        self.crowd.sync([agent("a", "idle"), agent("b", "working")], venue, 2, newcomers=True)
+        self.crowd.tick(venue, 2, NOW)
+        self.assertEqual((self.crowd.people["b"].desk, self.crowd.people["a"].desk), (0, None))
+
+    def test_equally_busy_agents_keep_the_desks_they_have(self):
+        venue = OpenRoom(desks=1)
+        self.crowd.sync([agent("b", "working")], venue, 1, newcomers=False)
+        self.crowd.tick(venue, 1, NOW)
+        self.crowd.sync([agent("a", "working"), agent("b", "working")], venue, 2, newcomers=True)
+        self.crowd.tick(venue, 2, NOW)
         self.assertEqual((self.crowd.people["b"].desk, self.crowd.people["a"].desk), (0, None))
 
 

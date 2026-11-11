@@ -52,7 +52,7 @@ class Person:
         self.desk: Optional[int] = None
         self.meeting: Optional[int] = None
         self.game: Optional[tuple[Game, int]] = None
-        self.nap_index = 0
+        self.nap_index: Optional[int] = None
         self.state = "arrive"
         self.goal: Optional[Point] = None
         self.route: list[Point] = []
@@ -70,8 +70,8 @@ class Person:
         self.pane_id, self.space, self.title, self.ticket = agent.pane_id, agent.space, agent.title, ticket
         self.leaving = False
 
-    def tick(self, venue: Venue, t: int, now: float, nap_after: float, free_spot: FreeSpot) -> None:
-        state, spot = self.intent(venue, t, now, nap_after, free_spot)
+    def tick(self, venue: Venue, t: int, free_spot: FreeSpot) -> None:
+        state, spot = self.intent(venue, t, free_spot)
         if self.activity is not None and state != self.activity.name:
             self.activity = None
         self.state = state
@@ -82,7 +82,7 @@ class Person:
             self.linger -= 1
         self.facing = self.facing_at_rest(t)
 
-    def intent(self, venue: Venue, t: int, now: float, nap_after: float, free_spot: FreeSpot) -> tuple[str, Point]:
+    def intent(self, venue: Venue, t: int, free_spot: FreeSpot) -> tuple[str, Point]:
         if self.leaving:
             return "leave", venue.entrance()
         if self.meeting is not None:
@@ -92,8 +92,8 @@ class Person:
             return game.name, game.spots[place]
         if self.desk is not None and self.status in AT_DESK_STATUSES:
             return self.desk_intent(venue, t)
-        if self.napping(now, nap_after):
-            return "nap", venue.nap_spot(self.nap_index)
+        if self.nap_index is not None:
+            return "nap", venue.nap_spots()[self.nap_index]
         return self.leisure_intent(venue, t, free_spot)
 
     def desk_intent(self, venue: Venue, t: int) -> tuple[str, Point]:
@@ -171,7 +171,7 @@ class Person:
             return self.activity.pose
         return POSES.get(self.state, "stand")
 
-    def napping(self, now: float, nap_after: float) -> bool:
+    def sleepy(self, now: float, nap_after: float) -> bool:
         return self.status in RESTING_STATUSES and now - self.since >= nap_after
 
     def has_mug(self, t: int) -> bool:

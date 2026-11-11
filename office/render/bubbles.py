@@ -60,12 +60,12 @@ def story_lines(person, details: dict, inner: int) -> list[tuple[str, str]]:
     return lines or [(line, "ink") for line in wrap(person.title or "nothing to show yet", inner, 2)]
 
 
-def draw_person_bubble(canvas: Canvas, person, in_state_for: float) -> None:
+def draw_person_bubble(canvas: Canvas, person, in_state_for: float, scale: int = 1) -> None:
     """A speech bubble above the clicked person: what they were asked, what they're doing, what's next."""
     width = max(22, min(52, canvas.w - 4))
     body = person_lines(person, width - 4, in_state_for)
     inks = dict(INKS, state=STATE_INKS.get(person.status, INKS["dim"]))
-    draw_bubble(canvas, int(person.x) + 2, int(person.y), [(text, inks[ink]) for text, ink in body], width)
+    draw_bubble(canvas, int((person.x + 2) * scale), int(person.y * scale), [(text, inks[ink]) for text, ink in body], width)
 
 
 def draw_pet_bubble(canvas: Canvas, x: int, y: int, text: str) -> None:

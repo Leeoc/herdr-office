@@ -5,7 +5,7 @@ from office.scenes import scene_class, scene_names
 from office.scenes.base import Scene
 
 ROOMY = [(200, 112), (160, 76)]
-CRAMPED = [(100, 56), (80, 24)]
+CRAMPED = [(100, 56), (80, 24), (72, 102), (60, 44)]
 
 
 class EveryScene(unittest.TestCase):
@@ -30,7 +30,7 @@ class OfficeSceneTest(unittest.TestCase):
     def test_every_place_can_be_reached_from_the_door(self):
         for w, h in ROOMY:
             scene = scene_class("office")(w, h)
-            places = [scene.seat(d) for d in range(scene.desk_count())] + [scene.nap_spot(0), scene.meeting_spot(0)]
+            places = [scene.seat(d) for d in range(scene.desk_count())] + [scene.nap_spots()[0], scene.meeting_spot(0)]
             places += [spot for activity in scene.activities() for spot in activity.spots]
             places += [spot for game in scene.games() for spot in game.spots]
             for place in places:
@@ -50,7 +50,7 @@ class OfficeSceneTest(unittest.TestCase):
 
     def test_smaller_rooms_leave_out_what_does_not_fit_and_nothing_overlaps(self):
         from office.pathing import Rect
-        for w, h in [(200, 112), (160, 76), (120, 60), (100, 56), (80, 44)]:
+        for w, h in [(200, 112), (160, 76), (120, 60), (100, 56), (80, 44), (72, 102), (60, 44)]:
             scene = scene_class("office")(w, h)
             kept = [rect for name, rects in scene.footprints() if name not in scene.no_room for rect in rects]
             kept.append(Rect(scene.lounge_x + 4, 2, 7, 5))
@@ -58,7 +58,11 @@ class OfficeSceneTest(unittest.TestCase):
                 for b in kept[i + 1:]:
                     self.assertFalse(a.overlaps(b), (w, h, a, b))
             self.assertFalse({a.name for a in scene.activities()} & scene.no_room)
-        self.assertIn("foosball", scene_class("office")(120, 60).no_room)
+        self.assertIn("foosball", scene_class("office")(60, 44).no_room)
+
+    def test_a_narrow_pane_finds_floor_for_the_games(self):
+        scene = scene_class("office")(72, 102, desks=3)
+        self.assertEqual({g.name for g in scene.games()}, {"pingpong", "foosball"})
 
     def test_switched_off_furniture_leaves_the_room(self):
         office = scene_class("office")
