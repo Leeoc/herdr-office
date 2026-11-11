@@ -1,10 +1,9 @@
 import json
 import os
 import subprocess
+import tomllib
 from dataclasses import dataclass, field, fields
 from typing import Optional
-
-import tomllib
 
 PLUGIN_ID = "lee.herdr-office"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
